@@ -264,6 +264,17 @@
       .row--me .bubble code { background: rgba(255, 255, 255, 0.22); }
 
       /* rich card: GitHub-style tables from the agent's Markdown */
+      .bubble ul, .bubble ol { margin: 4px 0 8px; padding-left: 20px; }
+      .bubble li { margin: 2px 0; }
+      .kvrow {
+        display: flex;
+        gap: 12px;
+        padding: 4px 0;
+        border-bottom: 1px dashed var(--line);
+      }
+      .kvrow:last-child { border-bottom: 0; }
+      .kvrow__k { flex: 0 0 44%; font-weight: 600; }
+      .kvrow__v { flex: 1; }
       .card {
         border: 1px solid var(--edge);
         border-radius: 12px;
@@ -617,11 +628,26 @@
           .replace(/</g, "&lt;")
           .replace(/>/g, "&gt;");
       }
+      // Masked identifiers the agent emits (s***@kore.com) collide with
+      // Markdown emphasis and used to render as "s" + a literal "*@kore.com**".
+      // Protect them before any asterisk parsing, then restore.
       function inlineMd(s) {
-        return s
-          .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
-          .replace(/(^|[^*])\*([^*]+)\*(?!\*)/g, "$1<em>$2</em>")
-          .replace(/`([^`]+)`/g, "<code>$1</code>");
+        const guards = [];
+        s = String(s).replace(
+          /[A-Za-z0-9._%+-]*\*{2,}[A-Za-z0-9._%+-]*@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g,
+          function (m) {
+            guards.push(m);
+            return "@@G" + (guards.length - 1) + "@@";
+          },
+        );
+        s = s
+          .replace(/`([^`]+)`/g, "<code>$1</code>")
+          .replace(/\*\*(?=\S)([\s\S]+?)(?<=\S)\*\*/g, "<strong>$1</strong>")
+          // emphasis only when both delimiters sit on a word boundary
+          .replace(/(?<![\w*])\*(?=\S)([^*]+?)(?<=\S)\*(?![\w*])/g, "<em>$1</em>");
+        return s.replace(/@@G(\d+)@@/g, function (_, i) {
+          return guards[i];
+        });
       }
       // Non-committal values the agent uses deliberately — render them muted.
       const MUTE_RE =
@@ -681,7 +707,36 @@
             i++;
             continue;
           }
-          if (line.trim() === "") {
+          // Bulleted list: "- item" / "* item"
+          if (/^\s*[-*]\s+\S/.test(line)) {
+            let li = "";
+            while (i < lines.length && /^\s*[-*]\s+\S/.test(lines[i])) {
+              li += "<li>" + inlineMd(esc(lines[i].replace(/^\s*[-*]\s+/, ""))) + "</li>";
+              i++;
+            }
+            out += "<ul>" + li + "</ul>";
+            continue;
+          }
+          // Numbered list: "1. item"
+          if (/^\s*\d+[.)]\s+\S/.test(line)) {
+            let li = "";
+            while (i < lines.length && /^\s*\d+[.)]\s+\S/.test(lines[i])) {
+              li += "<li>" + inlineMd(esc(lines[i].replace(/^\s*\d+[.)]\s+/, ""))) + "</li>";
+              i++;
+            }
+            out += "<ol>" + li + "</ol>";
+            continue;
+          }
+          if (line.trim() === "") { i++; continue; }
+          // "**Label:** value" is a field, not a sentence - render it as a row.
+          const kv = line.match(/^\s*\*\*([^*]+?):\*\*\s*(.+)$/);
+          if (kv) {
+            out +=
+              '<div class="kvrow"><span class="kvrow__k">' +
+              inlineMd(esc(kv[1])) +
+              '</span><span class="kvrow__v">' +
+              inlineMd(esc(kv[2])) +
+              "</span></div>";
             i++;
             continue;
           }
