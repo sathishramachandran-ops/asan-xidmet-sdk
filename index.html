@@ -264,6 +264,54 @@
       .row--me .bubble code { background: rgba(255, 255, 255, 0.22); }
 
       /* rich card: GitHub-style tables from the agent's Markdown */
+      /* ---------- sign-in gate ---------- */
+      .hdr__auth { color: var(--muted); font-size: 14px; }
+      .hdr__auth--in { color: var(--ink); font-weight: 600; }
+      .hdr__auth--in button {
+        background: none; border: 0; padding: 0 0 0 10px;
+        color: var(--blue-d); font: inherit; font-size: 13px; cursor: pointer;
+      }
+      #gate { display: flex; justify-content: center; padding: 26px 0 44px; }
+      .gate {
+        width: 100%;
+        max-width: 420px;
+        padding: 28px 30px 24px;
+        display: flex;
+        flex-direction: column;
+      }
+      .gate__mark {
+        width: 46px; height: 46px; border-radius: 13px;
+        background: linear-gradient(135deg, var(--blue), var(--cyan));
+        color: #fff; display: grid; place-items: center;
+        font-weight: 700; font-size: 17px; margin-bottom: 16px;
+      }
+      .gate__h { margin: 0 0 6px; font-size: 20px; letter-spacing: -0.01em; }
+      .gate__sub { margin: 0 0 20px; color: var(--muted); font-size: 13.5px; line-height: 1.55; }
+      .gate__label {
+        font-size: 12.5px; font-weight: 600; color: var(--muted);
+        margin-bottom: 5px; letter-spacing: 0.01em;
+      }
+      .gate__input {
+        font: inherit; color: var(--ink); background: var(--surface-2);
+        border: 1px solid var(--edge); border-radius: 10px;
+        padding: 11px 12px; margin-bottom: 14px; outline: none;
+      }
+      .gate__input:focus { border-color: var(--blue); background: var(--card); }
+      .gate__input--fin { text-transform: uppercase; letter-spacing: 0.14em; font-weight: 600; }
+      .gate__btn {
+        font: inherit; font-weight: 600; color: #fff; background: var(--blue);
+        border: 0; border-radius: 10px; padding: 12px; cursor: pointer; margin-top: 4px;
+      }
+      .gate__btn:hover:not(:disabled) { background: var(--blue-d); }
+      .gate__btn:disabled { opacity: 0.6; cursor: default; }
+      .gate__err {
+        display: none; margin: 0 0 12px; padding: 9px 11px;
+        background: #fdeaea; border: 1px solid #f3caca; border-radius: 9px;
+        color: var(--red); font-size: 13px; line-height: 1.5;
+      }
+      html[data-theme="dark"] .gate__err { background: #3a1717; border-color: #5a2626; color: #f09a9a; }
+      .gate__err.is-shown { display: block; }
+      .gate__hint { margin: 14px 0 0; color: var(--muted); font-size: 12px; line-height: 1.5; }
       /* day-grouped time picker */
       .cal {
         border: 1px solid var(--edge);
@@ -554,11 +602,43 @@
           <span>My info</span><span>Services</span><span>Life events</span>
           <span>Payments</span><span>News</span>
         </nav>
-        <span style="color: var(--muted); font-size: 14px">Sign In</span>
+        <span class="hdr__auth" id="authState">Sign In</span>
       </div>
     </header>
 
     <div class="wrap">
+      <!-- ======================= SIGN-IN GATE ======================= -->
+      <section id="gate">
+        <form class="panel gate" id="gateForm" novalidate>
+          <div class="gate__mark">AS</div>
+          <h2 class="gate__h">Sign in to mygov</h2>
+          <p class="gate__sub">
+            Enter your ASAN-registered mobile number and your FIN — the
+            7-character ID number on your identity card.
+          </p>
+
+          <label class="gate__label" for="gateMobile">Registered mobile number</label>
+          <input
+            class="gate__input" id="gateMobile" type="tel" inputmode="tel"
+            autocomplete="tel" placeholder="+994 50 555 1234" />
+
+          <label class="gate__label" for="gateFin">FIN (ID number)</label>
+          <input
+            class="gate__input gate__input--fin" id="gateFin" type="text"
+            autocomplete="off" spellcheck="false" maxlength="7" placeholder="5AB1C2D" />
+
+          <p class="gate__err" id="gateErr"></p>
+
+          <button class="gate__btn" id="gateBtn" type="submit">Sign In</button>
+
+          <p class="gate__hint">
+            Both factors are required and must resolve to the same citizen.
+          </p>
+        </form>
+      </section>
+
+      <!-- ======================= APP (post sign-in) ======================= -->
+      <div id="app" hidden>
       <div class="crumb">Home · Services · Citizen assistant</div>
       <div class="grid">
         <!-- ================= CHAT ================= -->
@@ -626,10 +706,10 @@
           <div class="panel side__box" style="margin-bottom: 16px">
             <h4>Demo identity</h4>
             <div class="kv">
-              <div><b>Citizen</b><span>Elvin Məmmədov</span></div>
-              <div><b>Mobile</b><span>+994505551234</span></div>
-              <div><b>FIN</b><span>5AB1C2D</span></div>
-              <div><b>District</b><span>Yasamal</span></div>
+              <div><b>Citizen</b><span id="idName">—</span></div>
+              <div><b>Mobile</b><span id="idMobile">—</span></div>
+              <div><b>FIN</b><span id="idFin">—</span></div>
+              <div><b>District</b><span id="idDistrict">—</span></div>
             </div>
             <p style="color: var(--muted); font-size: 12.5px; margin: 12px 0 0">
               Verification needs <b>both</b> the registered mobile and the FIN,
@@ -646,6 +726,7 @@
             </ul>
           </div>
         </aside>
+      </div>
       </div>
     </div>
 
@@ -1339,6 +1420,85 @@
           renderSampleCard();
         }
       }
+
+      /* ============================================================
+         SIGN-IN GATE
+         Verifies against the same backend the agent uses (asan-auth), which
+         requires BOTH factors and cross-checks that they resolve to the same
+         citizen. The chat SDK wiring below is untouched.
+         ============================================================ */
+      const AUTH_URL =
+        "https://obagcessyqdsbihnmeav.supabase.co/functions/v1/asan-auth/identify";
+
+      const gate = {
+        wrap: document.getElementById("gate"),
+        form: document.getElementById("gateForm"),
+        mobile: document.getElementById("gateMobile"),
+        fin: document.getElementById("gateFin"),
+        err: document.getElementById("gateErr"),
+        btn: document.getElementById("gateBtn"),
+        app: document.getElementById("app"),
+        auth: document.getElementById("authState"),
+        idName: document.getElementById("idName"),
+        idMobile: document.getElementById("idMobile"),
+        idFin: document.getElementById("idFin"),
+        idDistrict: document.getElementById("idDistrict"),
+      };
+
+      function gateError(msg) {
+        gate.err.textContent = msg;
+        gate.err.classList.add("is-shown");
+      }
+
+      function signIn(citizen) {
+        const name = [citizen.first_name, citizen.last_name].filter(Boolean).join(" ");
+        gate.idName.textContent = name || "—";
+        gate.idMobile.textContent = citizen.mobile || "—";
+        gate.idFin.textContent = citizen.fin || "—";
+        gate.idDistrict.textContent = citizen.district || citizen.city || "—";
+        gate.auth.textContent = name;
+        gate.auth.className = "hdr__auth hdr__auth--in";
+        const out = document.createElement("button");
+        out.type = "button";
+        out.textContent = "Sign out";
+        out.addEventListener("click", function () { location.reload(); });
+        gate.auth.appendChild(out);
+        gate.wrap.hidden = true;
+        gate.app.hidden = false;
+      }
+
+      gate.form.addEventListener("submit", async function (ev) {
+        ev.preventDefault();
+        gate.err.classList.remove("is-shown");
+        const mobile = gate.mobile.value.trim();
+        const fin = gate.fin.value.trim().toUpperCase();
+        if (!mobile || !fin) {
+          gateError("Enter both your registered mobile number and your FIN.");
+          return;
+        }
+        gate.btn.disabled = true;
+        gate.btn.textContent = "Verifying…";
+        try {
+          const r = await fetch(AUTH_URL, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ mobile: mobile, fin: fin }),
+          });
+          const d = await r.json();
+          if (d && d.identified) {
+            signIn(d);
+          } else {
+            gateError(
+              (d && d.message) ||
+                "Those details do not match an ASAN record. Please check and try again.",
+            );
+          }
+        } catch (e) {
+          gateError("Could not reach the verification service. Please try again.");
+        }
+        gate.btn.disabled = false;
+        gate.btn.textContent = "Sign In";
+      });
 
       els.send.addEventListener("click", function () {
         const v = els.input.value.trim();
