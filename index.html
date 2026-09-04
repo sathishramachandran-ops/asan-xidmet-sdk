@@ -225,7 +225,7 @@
 
       .stream {
         padding: 18px;
-        min-height: 340px;
+        min-height: 180px;
         max-height: 58vh;
         overflow-y: auto;
         display: flex;
@@ -698,11 +698,13 @@
         bannerText: document.getElementById("connBannerText"),
       };
 
+      // Service-led starters: each is sent verbatim as the citizen's first
+      // message, so they are phrased the way the agent's intents expect.
       const STARTERS = [
-        "I need a residence certificate",
-        "Book me an appointment at an ASAN centre",
-        "What is the status of my request?",
-        "How much is the real-estate extract fee?",
+        "Residence permit certificate",
+        "Renew my driving licence",
+        "Book an appointment at an ASAN centre",
+        "Status of my requests",
       ];
 
       let activeChat = null;
