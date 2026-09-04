@@ -264,6 +264,57 @@
       .row--me .bubble code { background: rgba(255, 255, 255, 0.22); }
 
       /* rich card: GitHub-style tables from the agent's Markdown */
+      /* day-grouped time picker */
+      .cal {
+        border: 1px solid var(--edge);
+        border-radius: 12px;
+        background: var(--card);
+        padding: 4px 12px 12px;
+        margin: 10px 0 4px;
+      }
+      .cal__day + .cal__day { border-top: 1px solid var(--line); margin-top: 10px; }
+      .cal__date {
+        display: flex;
+        align-items: baseline;
+        gap: 8px;
+        padding: 10px 0 8px;
+      }
+      .cal__dow {
+        background: var(--blue);
+        color: #fff;
+        font-size: 11px;
+        font-weight: 700;
+        letter-spacing: .06em;
+        text-transform: uppercase;
+        padding: 2px 8px;
+        border-radius: 6px;
+      }
+      .cal__dnum { font-weight: 600; font-size: 13.5px; }
+      .cal__slots {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
+        gap: 7px;
+      }
+      .slot {
+        font: inherit;
+        font-size: 13px;
+        font-weight: 600;
+        font-variant-numeric: tabular-nums;
+        color: var(--blue-d);
+        background: var(--surface-2);
+        border: 1px solid var(--edge);
+        border-radius: 9px;
+        padding: 8px 4px;
+        cursor: pointer;
+        transition: border-color .12s, background .12s, transform .12s;
+      }
+      .slot:hover:not(:disabled) {
+        border-color: var(--blue);
+        background: var(--chip);
+        transform: translateY(-1px);
+      }
+      .slot:disabled { cursor: default; }
+      .slot.opt--picked { background: var(--blue); border-color: var(--blue-d); color: #fff; }
       /* selectable option cards */
       .opts {
         display: grid;
@@ -712,6 +763,66 @@
         return { title: title, meta: rest };
       }
 
+      // Strip Markdown so a list item can be pattern-matched as data.
+      function plainText(s) {
+        return String(s)
+          .replace(/\*\*([^*]+)\*\*/g, "$1")
+          .replace(/\*([^*]+)\*/g, "$1")
+          .replace(/`([^`]+)`/g, "$1")
+          .trim();
+      }
+
+      // "Fri, 4 Sept 2026 at 9:00 AM" -> { day, time }. Also accepts a bare
+      // time ("9:00 AM") for lists that repeat a single known date.
+      const SLOT_RE = /^(.*?)(?:\s+at\s+|\s+@\s+)(\d{1,2}[:.]\d{2}\s*(?:AM|PM)?)$/i;
+      const BARE_TIME_RE = /^(\d{1,2}[:.]\d{2}\s*(?:AM|PM)?)$/i;
+      function parseSlot(head) {
+        const t = plainText(head);
+        const m = t.match(SLOT_RE);
+        if (m) return { day: m[1].replace(/[,\s]+$/, "").trim(), time: m[2].trim(), full: t };
+        const b = t.match(BARE_TIME_RE);
+        if (b) return { day: "", time: b[1].trim(), full: t };
+        return null;
+      }
+
+      // A choice list whose items are all date-times renders as a day-grouped
+      // time picker rather than a bullet list.
+      function renderSlotPicker(items) {
+        const slots = items.map(function (it) { return parseSlot(it.head); });
+        if (slots.length < 2 || slots.some(function (x) { return !x; })) return null;
+        if (items.some(function (it) { return it.subs && it.subs.length; })) return null;
+
+        const days = [];
+        slots.forEach(function (sl) {
+          let d = days.filter(function (x) { return x.day === sl.day; })[0];
+          if (!d) { d = { day: sl.day, times: [] }; days.push(d); }
+          d.times.push(sl);
+        });
+
+        let html = '<div class="cal">';
+        days.forEach(function (d) {
+          if (d.day) {
+            const parts = d.day.split(/,\s*/);
+            const dow = parts.length > 1 ? parts[0] : "";
+            const rest = parts.length > 1 ? parts.slice(1).join(", ") : d.day;
+            html +=
+              '<div class="cal__day"><div class="cal__date">' +
+              (dow ? '<span class="cal__dow">' + esc(dow) + "</span>" : "") +
+              '<span class="cal__dnum">' + esc(rest) + "</span></div>";
+          } else {
+            html += '<div class="cal__day">';
+          }
+          html += '<div class="cal__slots">';
+          d.times.forEach(function (sl) {
+            html +=
+              '<button type="button" class="slot" data-choice="' + escAttr(sl.full) + '">' +
+              esc(sl.time) + "</button>";
+          });
+          html += "</div></div>";
+        });
+        return html + "</div>";
+      }
+
       function inlineMd(s) {
         const guards = [];
         s = String(s).replace(
@@ -849,6 +960,10 @@
               }
               items.push({ head: head, subs: subs });
             }
+            if (isChoice) {
+              const cal = renderSlotPicker(items);
+              if (cal) { out += cal; continue; }
+            }
             const grouped = items.some(function (it) { return it.subs.length; });
             if (!grouped) {
               let li = "";
@@ -901,6 +1016,11 @@
                 i++;
               }
               items.push({ head: head, subs: subs });
+            }
+
+            if (isChoice) {
+              const cal = renderSlotPicker(items);
+              if (cal) { out += cal; continue; }
             }
 
             if (isChoice) {
@@ -1140,10 +1260,10 @@
       // delegated listener. Picking an option locks that group so the citizen
       // cannot submit two choices for the same question.
       els.stream.addEventListener("click", function (ev) {
-        const btn = ev.target.closest ? ev.target.closest(".opt") : null;
+        const btn = ev.target.closest ? ev.target.closest(".opt, .slot") : null;
         if (!btn || btn.disabled) return;
-        const group = btn.parentNode;
-        Array.prototype.forEach.call(group.querySelectorAll(".opt"), function (b) {
+        const group = btn.closest(".opts, .cal") || btn.parentNode;
+        Array.prototype.forEach.call(group.querySelectorAll(".opt, .slot"), function (b) {
           b.disabled = true;
           if (b !== btn) b.classList.add("opt--dim");
         });
