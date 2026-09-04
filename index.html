@@ -1,0 +1,948 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>ASAN xidmət · Web SDK</title>
+    <link
+      rel="preconnect"
+      href="https://fonts.gstatic.com"
+      crossorigin
+    />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Noto+Sans:wght@400;500;600;700&display=swap"
+    />
+    <style>
+      /* Design tokens lifted from the asan-xidmet-portal replica so this page
+         reads as the same product. Dark values are the same hues, inverted. */
+      :root {
+        --blue: #0f7ef5;
+        --blue-d: #1072de;
+        --navy: #315ab5;
+        --ink: #151a1e;
+        --muted: #5b6875;
+        --line: #e5e7eb;
+        --surface: #eef1f6;
+        --surface-2: #f0f4fa;
+        --chip: #eaeff8;
+        --edge: #e6eaf2;
+        --red: #ba1a1a;
+        --green: #3f9c35;
+        --cyan: #00b5e2;
+        --card: #ffffff;
+        --radius: 16px;
+        --shadow: 0 1px 2px rgba(21, 26, 30, 0.05),
+          0 10px 30px rgba(21, 26, 30, 0.06);
+      }
+      html[data-theme="dark"] {
+        --ink: #e8edf4;
+        --muted: #93a3b6;
+        --line: #22303f;
+        --surface: #0e1420;
+        --surface-2: #131b28;
+        --chip: #172130;
+        --edge: #22303f;
+        --card: #121a26;
+        --shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 10px 30px rgba(0, 0, 0, 0.35);
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        background: var(--surface);
+        color: var(--ink);
+        font-family: "Noto Sans", -apple-system, Segoe UI, Roboto, Helvetica,
+          Arial, sans-serif;
+        font-size: 15px;
+        line-height: 1.55;
+      }
+      a { color: var(--blue-d); }
+
+      /* ---------- utility bar + header (mygov chrome) ---------- */
+      .util {
+        background: var(--navy);
+        color: #fff;
+        font-size: 12.5px;
+      }
+      .util__in,
+      .hdr__in,
+      .wrap {
+        max-width: 1120px;
+        margin: 0 auto;
+        padding: 0 20px;
+      }
+      .util__in {
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        height: 34px;
+      }
+      .util__spacer { flex: 1; }
+      .pill {
+        background: rgba(255, 255, 255, 0.18);
+        border: 1px solid rgba(255, 255, 255, 0.32);
+        border-radius: 999px;
+        padding: 2px 9px;
+        font-weight: 600;
+        letter-spacing: 0.04em;
+        font-size: 11px;
+      }
+      .util button {
+        background: none;
+        border: 0;
+        color: #fff;
+        font: inherit;
+        cursor: pointer;
+        opacity: 0.92;
+        display: inline-flex;
+        gap: 6px;
+        align-items: center;
+      }
+      .util button:hover { opacity: 1; text-decoration: underline; }
+
+      .hdr {
+        background: var(--card);
+        border-bottom: 1px solid var(--line);
+      }
+      .hdr__in {
+        display: flex;
+        align-items: center;
+        gap: 18px;
+        height: 66px;
+      }
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 11px;
+        font-weight: 700;
+        font-size: 19px;
+        letter-spacing: -0.01em;
+      }
+      .brand__mark {
+        width: 34px;
+        height: 34px;
+        border-radius: 10px;
+        background: linear-gradient(135deg, var(--blue), var(--cyan));
+        display: grid;
+        place-items: center;
+        color: #fff;
+        font-weight: 700;
+        font-size: 15px;
+      }
+      .nav {
+        display: flex;
+        gap: 18px;
+        margin-left: 10px;
+        flex: 1;
+        color: var(--muted);
+        font-size: 14px;
+      }
+      .nav span { cursor: default; }
+      .nav span:hover { color: var(--ink); }
+      @media (max-width: 900px) { .nav { display: none; } }
+
+      /* ---------- layout ---------- */
+      .wrap { padding-top: 22px; padding-bottom: 44px; }
+      .crumb {
+        color: var(--muted);
+        font-size: 13px;
+        margin-bottom: 12px;
+      }
+      .grid {
+        display: grid;
+        grid-template-columns: 1fr 320px;
+        gap: 20px;
+        align-items: start;
+      }
+      @media (max-width: 980px) { .grid { grid-template-columns: 1fr; } }
+
+      .panel {
+        background: var(--card);
+        border: 1px solid var(--edge);
+        border-radius: var(--radius);
+        box-shadow: var(--shadow);
+        overflow: hidden;
+      }
+
+      /* ---------- chat ---------- */
+      .chat__head {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 15px 18px;
+        border-bottom: 1px solid var(--line);
+      }
+      .avatar {
+        width: 38px;
+        height: 38px;
+        border-radius: 11px;
+        background: linear-gradient(135deg, var(--navy), var(--blue));
+        color: #fff;
+        display: grid;
+        place-items: center;
+        font-weight: 700;
+        font-size: 13px;
+      }
+      .chat__title { font-weight: 600; }
+      .chat__sub { color: var(--muted); font-size: 12.5px; }
+      .status {
+        margin-left: auto;
+        font-size: 12px;
+        color: var(--muted);
+        display: inline-flex;
+        align-items: center;
+        gap: 7px;
+      }
+      .dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: var(--muted);
+      }
+      .is-connected .dot { background: var(--green); }
+      .is-offline .dot { background: #d3a11a; }
+
+      .banner {
+        display: none;
+        gap: 10px;
+        padding: 11px 18px;
+        background: #fff8e6;
+        border-bottom: 1px solid #f0e0b6;
+        color: #6b5410;
+        font-size: 13px;
+      }
+      html[data-theme="dark"] .banner {
+        background: #2a2412;
+        border-color: #4a3f1c;
+        color: #e8d9a6;
+      }
+      .banner.is-shown { display: flex; }
+      .banner code {
+        background: rgba(0, 0, 0, 0.07);
+        padding: 1px 5px;
+        border-radius: 5px;
+      }
+
+      .stream {
+        padding: 18px;
+        min-height: 340px;
+        max-height: 58vh;
+        overflow-y: auto;
+        display: flex;
+        flex-direction: column;
+        gap: 14px;
+      }
+      .row { display: flex; }
+      .row--me { justify-content: flex-end; }
+      .bubble {
+        max-width: 86%;
+        padding: 11px 14px;
+        border-radius: 14px;
+        border: 1px solid var(--edge);
+        background: var(--surface-2);
+      }
+      .row--me .bubble {
+        background: var(--blue);
+        border-color: var(--blue-d);
+        color: #fff;
+        border-bottom-right-radius: 5px;
+      }
+      .row--bot .bubble { border-bottom-left-radius: 5px; }
+      .bubble p { margin: 0 0 8px; }
+      .bubble p:last-child { margin-bottom: 0; }
+      .bubble h3 {
+        margin: 2px 0 8px;
+        font-size: 14.5px;
+        letter-spacing: 0.01em;
+      }
+      .bubble code {
+        background: var(--chip);
+        padding: 1px 5px;
+        border-radius: 5px;
+        font-size: 13px;
+      }
+      .row--me .bubble code { background: rgba(255, 255, 255, 0.22); }
+
+      /* rich card: GitHub-style tables from the agent's Markdown */
+      .card {
+        border: 1px solid var(--edge);
+        border-radius: 12px;
+        overflow: hidden;
+        margin: 10px 0 2px;
+      }
+      table { border-collapse: collapse; width: 100%; font-size: 13.5px; }
+      thead th {
+        background: var(--chip);
+        text-align: left;
+        font-weight: 600;
+        color: var(--ink);
+        padding: 8px 11px;
+        border-bottom: 1px solid var(--edge);
+      }
+      td {
+        padding: 8px 11px;
+        border-bottom: 1px solid var(--line);
+        vertical-align: top;
+      }
+      tr:last-child td { border-bottom: 0; }
+      td.num { text-align: right; font-variant-numeric: tabular-nums; }
+      td.mute { color: var(--muted); font-style: italic; }
+
+      .typing {
+        display: none;
+        gap: 5px;
+        padding: 0 18px 14px;
+      }
+      .typing.is-on { display: flex; }
+      .typing i {
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+        background: var(--muted);
+        animation: bob 1.15s infinite;
+      }
+      .typing i:nth-child(2) { animation-delay: 0.15s; }
+      .typing i:nth-child(3) { animation-delay: 0.3s; }
+      @keyframes bob {
+        0%, 60%, 100% { transform: translateY(0); opacity: 0.45; }
+        30% { transform: translateY(-4px); opacity: 1; }
+      }
+
+      .starters {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        padding: 0 18px 14px;
+      }
+      .quick-reply {
+        background: var(--chip);
+        border: 1px solid var(--edge);
+        color: var(--ink);
+        border-radius: 999px;
+        padding: 7px 13px;
+        font: inherit;
+        font-size: 13px;
+        cursor: pointer;
+      }
+      .quick-reply:hover { border-color: var(--blue); color: var(--blue-d); }
+
+      .composer {
+        display: flex;
+        gap: 10px;
+        padding: 14px 18px;
+        border-top: 1px solid var(--line);
+        background: var(--card);
+      }
+      .composer__field {
+        flex: 1;
+        display: flex;
+        align-items: center;
+        gap: 9px;
+        background: var(--surface-2);
+        border: 1px solid var(--edge);
+        border-radius: 12px;
+        padding: 0 12px;
+      }
+      .composer__field svg { width: 17px; height: 17px; color: var(--muted); }
+      .composer__input {
+        flex: 1;
+        border: 0;
+        background: none;
+        color: var(--ink);
+        font: inherit;
+        padding: 11px 0;
+        outline: none;
+      }
+      .composer__send {
+        width: 42px;
+        border: 0;
+        border-radius: 12px;
+        background: var(--blue);
+        cursor: pointer;
+        display: grid;
+        place-items: center;
+      }
+      .composer__send svg { width: 19px; height: 19px; }
+      .composer__note {
+        margin: 0;
+        padding: 0 18px 15px;
+        color: var(--muted);
+        font-size: 11.5px;
+      }
+
+      /* ---------- side rail ---------- */
+      .side h4 {
+        margin: 0 0 10px;
+        font-size: 13px;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        color: var(--muted);
+      }
+      .side__box { padding: 16px 18px; }
+      .kv { font-size: 13px; }
+      .kv div {
+        display: flex;
+        justify-content: space-between;
+        gap: 10px;
+        padding: 6px 0;
+        border-bottom: 1px dashed var(--line);
+      }
+      .kv div:last-child { border-bottom: 0; }
+      .kv b { font-weight: 600; }
+      .kv span { color: var(--muted); }
+      .side__list { margin: 0; padding-left: 18px; font-size: 13.5px; color: var(--muted); }
+      .side__list li { margin-bottom: 6px; }
+
+      footer {
+        border-top: 1px solid var(--line);
+        background: var(--card);
+        color: var(--muted);
+        font-size: 12.5px;
+      }
+      footer .wrap { padding: 18px 20px; }
+    </style>
+  </head>
+  <body>
+    <div class="util">
+      <div class="util__in">
+        <span class="pill">DEMO</span>
+        <span style="opacity: 0.9">List of official websites</span>
+        <span class="util__spacer"></span>
+        <button id="themeToggle" type="button">
+          <span id="themeLabel">Dark</span>
+        </button>
+        <span style="opacity: 0.55">|</span>
+        <span style="opacity: 0.9">AZ · EN · RU</span>
+      </div>
+    </div>
+
+    <header class="hdr">
+      <div class="hdr__in">
+        <div class="brand">
+          <span class="brand__mark">AS</span>
+          <span>ASAN xidmət</span>
+        </div>
+        <nav class="nav">
+          <span>My info</span><span>Services</span><span>Life events</span>
+          <span>Payments</span><span>News</span>
+        </nav>
+        <span style="color: var(--muted); font-size: 14px">Sign In</span>
+      </div>
+    </header>
+
+    <div class="wrap">
+      <div class="crumb">Home · Services · Citizen assistant</div>
+      <div class="grid">
+        <!-- ================= CHAT ================= -->
+        <section class="panel" id="chat">
+          <div class="chat__head">
+            <div class="avatar">AS</div>
+            <div>
+              <div class="chat__title">ASAN Citizen Assistant</div>
+              <div class="chat__sub">
+                Appointments · Certificates · Status &amp; fees
+              </div>
+            </div>
+            <div class="status">
+              <span class="dot"></span>
+              <span id="connStatus">Connecting…</span>
+            </div>
+          </div>
+
+          <div class="banner" id="connBanner">
+            <span id="connBannerText"></span>
+          </div>
+
+          <div class="stream" id="stream"></div>
+          <div class="typing" id="typing"><i></i><i></i><i></i></div>
+          <div class="starters" id="starters"></div>
+
+          <div class="composer">
+            <label class="composer__field">
+              <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <path
+                  d="M4 5h16M4 12h16M4 19h10"
+                  stroke="currentColor"
+                  stroke-width="1.6"
+                  stroke-linecap="round"
+                />
+              </svg>
+              <input
+                class="composer__input"
+                id="composerInput"
+                type="text"
+                autocomplete="off"
+                placeholder="Ask about an appointment, certificate, request status or fee…"
+                aria-label="Message"
+              />
+            </label>
+            <button class="composer__send" id="composerSend" type="button" aria-label="Send message">
+              <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <path
+                  d="M4 12h14m0 0-5-5m5 5-5 5"
+                  stroke="#fff"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                />
+              </svg>
+            </button>
+          </div>
+          <p class="composer__note">
+            Agent Platform Web SDK · custom rich-card renderer · Kore.ai Artemis
+          </p>
+        </section>
+
+        <!-- ================= SIDE RAIL ================= -->
+        <aside class="side">
+          <div class="panel side__box" style="margin-bottom: 16px">
+            <h4>Demo identity</h4>
+            <div class="kv">
+              <div><b>Citizen</b><span>Elvin Məmmədov</span></div>
+              <div><b>Mobile</b><span>+994505551234</span></div>
+              <div><b>FIN</b><span>5AB1C2D</span></div>
+              <div><b>District</b><span>Yasamal</span></div>
+            </div>
+            <p style="color: var(--muted); font-size: 12.5px; margin: 12px 0 0">
+              Verification needs <b>both</b> the registered mobile and the FIN,
+              and both must resolve to the same citizen.
+            </p>
+          </div>
+          <div class="panel side__box">
+            <h4>What you can ask</h4>
+            <ul class="side__list">
+              <li>Book or reschedule an ASAN centre appointment</li>
+              <li>Request a certificate or official reference</li>
+              <li>Check a request status, fee or payment link</li>
+              <li>Look up a property by cadastral number</li>
+            </ul>
+          </div>
+        </aside>
+      </div>
+    </div>
+
+    <footer>
+      <div class="wrap">
+        Demonstration build for evaluation purposes. Not affiliated with, and
+        not endorsed by, the Government of Azerbaijan or ASAN xidmət.
+      </div>
+    </footer>
+
+    <script>
+      "use strict";
+
+      /* ============================================================
+         CONFIGURATION
+         Wiring copied from the live asan-xidmet-portal deployment, so this
+         page talks to the SAME production multi-agent build.
+         ============================================================ */
+
+      // "ASAN Xidmet AI - Multi-Agent" (entry ASAN_Concierge + 3 specialists).
+      const PROJECT_ID = "019fd080-76c9-77b5-a9eb-2d318e0d816b";
+
+      // PROD runtime (the reference file pointed at agents-dev; ASAN lives on prod).
+      const ENDPOINT = "https://agents.kore.ai";
+
+      // Public Web SDK channel key — safe to ship in client HTML.
+      // Studio → Deployments → Channels → Web SDK → Setup instructions.
+      const PUBLIC_KEY =
+        "pk_fa59781740827afd6a369a5daeaa6072785585f2da240061";
+
+      // Web SDK channel id. Channel + key are a matched pair; swapping one
+      // without the other yields a connect failure.
+      const CHANNEL_ID = "019fd0f5-c6b1-7f52-a919-aeaf4c8603ea";
+
+      // Official embed bundle. UMD build: exposes the `window.AgentSDK`
+      // namespace (AgentSDK / ChatClient classes) AND registers the
+      // <agent-widget> custom element, so both integration paths work.
+      const SDK_SOURCES = [ENDPOINT + "/api/sdk/embed/script"];
+
+      /* ============================================================ DOM */
+      const els = {
+        chat: document.getElementById("chat"),
+        stream: document.getElementById("stream"),
+        typing: document.getElementById("typing"),
+        starters: document.getElementById("starters"),
+        input: document.getElementById("composerInput"),
+        send: document.getElementById("composerSend"),
+        connStatus: document.getElementById("connStatus"),
+        banner: document.getElementById("connBanner"),
+        bannerText: document.getElementById("connBannerText"),
+      };
+
+      const STARTERS = [
+        "I need a residence certificate",
+        "Book me an appointment at an ASAN centre",
+        "What is the status of my request?",
+        "How much is the real-estate extract fee?",
+      ];
+
+      let activeChat = null;
+      let connected = false;
+
+      /* ============================================================ THEME */
+      (function themeSetup() {
+        const btn = document.getElementById("themeToggle");
+        const label = document.getElementById("themeLabel");
+        function systemDark() {
+          return window.matchMedia("(prefers-color-scheme: dark)").matches;
+        }
+        function currentIsDark() {
+          const t = document.documentElement.getAttribute("data-theme");
+          if (t === "dark") return true;
+          if (t === "light") return false;
+          return systemDark();
+        }
+        function sync() {
+          label.textContent = currentIsDark() ? "Light" : "Dark";
+        }
+        btn.addEventListener("click", function () {
+          document.documentElement.setAttribute(
+            "data-theme",
+            currentIsDark() ? "light" : "dark",
+          );
+          sync();
+        });
+        window
+          .matchMedia("(prefers-color-scheme: dark)")
+          .addEventListener("change", sync);
+        sync();
+      })();
+
+      /* ============ ESCAPING + tiny Markdown renderer ============
+         Everything is escaped first, so agent Markdown is safe to render. */
+      function esc(s) {
+        return String(s == null ? "" : s)
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;");
+      }
+      function inlineMd(s) {
+        return s
+          .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
+          .replace(/(^|[^*])\*([^*]+)\*(?!\*)/g, "$1<em>$2</em>")
+          .replace(/`([^`]+)`/g, "<code>$1</code>");
+      }
+      // Non-committal values the agent uses deliberately — render them muted.
+      const MUTE_RE =
+        /\b(unavailable|not assessed|no data|n\/a|unknown|restricted|pending)\b/i;
+      // Manat / numeric cells get right-aligned tabular treatment.
+      const MONEY_RE = /^[−+-]?(₼|AZN\s?)?\s?[\d,]+(\.\d+)?$/;
+      function isMoney(s) {
+        return MONEY_RE.test(String(s).trim());
+      }
+
+      function el(tag, cls, html) {
+        const n = document.createElement(tag);
+        if (cls) n.className = cls;
+        if (html != null) n.innerHTML = html;
+        return n;
+      }
+
+      // Render a GitHub-style Markdown table into a bordered card.
+      function renderTable(lines) {
+        const rows = lines.map((l) =>
+          l.replace(/^\|/, "").replace(/\|$/, "").split("|").map((c) => c.trim()),
+        );
+        const head = rows[0];
+        const body = rows.slice(2); // row 1 is the --- separator
+        let html = "<table><thead><tr>";
+        head.forEach((h) => (html += "<th>" + inlineMd(esc(h)) + "</th>"));
+        html += "</tr></thead><tbody>";
+        body.forEach((r) => {
+          html += "<tr>";
+          r.forEach((c) => {
+            const cls = isMoney(c) ? "num" : MUTE_RE.test(c) ? "mute" : "";
+            html +=
+              '<td class="' + cls + '">' + inlineMd(esc(c)) + "</td>";
+          });
+          html += "</tr>";
+        });
+        return '<div class="card">' + html + "</tbody></table></div>";
+      }
+
+      function mdToHtml(text) {
+        const lines = String(text == null ? "" : text).split("\n");
+        let out = "";
+        let i = 0;
+        while (i < lines.length) {
+          const line = lines[i];
+          if (/^\s*\|.*\|\s*$/.test(line) && /^\s*\|[\s:|-]+\|\s*$/.test(lines[i + 1] || "")) {
+            const block = [];
+            while (i < lines.length && /^\s*\|.*\|\s*$/.test(lines[i])) {
+              block.push(lines[i].trim());
+              i++;
+            }
+            out += renderTable(block);
+            continue;
+          }
+          if (/^\s*#{1,6}\s+/.test(line)) {
+            out += "<h3>" + inlineMd(esc(line.replace(/^\s*#{1,6}\s+/, ""))) + "</h3>";
+            i++;
+            continue;
+          }
+          if (line.trim() === "") {
+            i++;
+            continue;
+          }
+          out += "<p>" + inlineMd(esc(line)) + "</p>";
+          i++;
+        }
+        return out;
+      }
+
+      /* ============================================================ RENDER */
+      function scrollDown() {
+        els.stream.scrollTop = els.stream.scrollHeight;
+      }
+      function renderUser(text) {
+        const row = el("div", "row row--me");
+        row.appendChild(el("div", "bubble", "<p>" + inlineMd(esc(text)) + "</p>"));
+        els.stream.appendChild(row);
+        scrollDown();
+      }
+      function renderAssistant(msg) {
+        const content =
+          (msg && (msg.content || msg.text || msg.message)) || "";
+        if (!String(content).trim()) return; // ignore empty turns
+        const row = el("div", "row row--bot");
+        row.appendChild(el("div", "bubble", mdToHtml(content)));
+        els.stream.appendChild(row);
+        scrollDown();
+      }
+
+      // Streaming: one live bubble per messageId, appended chunk by chunk.
+      const streamNodes = {};
+      function appendStream(id, chunk) {
+        if (!streamNodes[id]) {
+          const row = el("div", "row row--bot");
+          const b = el("div", "bubble", "");
+          row.appendChild(b);
+          els.stream.appendChild(row);
+          streamNodes[id] = { row: row, bubble: b, buf: "" };
+        }
+        const n = streamNodes[id];
+        n.buf += chunk;
+        n.bubble.innerHTML = mdToHtml(n.buf);
+        scrollDown();
+      }
+      function clearStreamNode(id) {
+        const n = streamNodes[id];
+        if (n && n.row && n.row.parentNode) n.row.parentNode.removeChild(n.row);
+        delete streamNodes[id];
+      }
+
+      function showTyping(on) {
+        els.typing.classList.toggle("is-on", !!on);
+        if (on) scrollDown();
+      }
+      function setBanner(kind, html) {
+        els.banner.classList.add("is-shown");
+        els.bannerText.innerHTML = html;
+        els.chat.classList.remove("is-connected", "is-offline");
+        els.chat.classList.add("is-offline");
+        els.connStatus.textContent =
+          kind === "notconnected" ? "Not connected" : "Offline · sample UI";
+      }
+      function setConnected() {
+        connected = true;
+        els.banner.classList.remove("is-shown");
+        els.chat.classList.remove("is-offline");
+        els.chat.classList.add("is-connected");
+        els.connStatus.textContent = "Connected";
+      }
+
+      /* ======================================= OFFLINE SAMPLE CARD */
+      function renderSampleCard() {
+        renderAssistant({
+          role: "assistant",
+          content: [
+            "### Request status — REQ200002",
+            "",
+            "| Detail | Value |",
+            "| --- | --- |",
+            "| Service | Real-estate register extract |",
+            "| Status | Pending Payment |",
+            "| State duty | ₼20.00 |",
+            "| Payment ref | PAY300001 |",
+            "| Centre | ASAN xidmət №1, Yasamal |",
+            "",
+            "**This is the offline demo renderer.** Connect the production Web SDK key to talk to the live ASAN agent.",
+          ].join("\n"),
+        });
+      }
+
+      /* ======================================= SDK LOADER + WIRING */
+      function loadScript(src) {
+        return new Promise(function (resolve, reject) {
+          const s = document.createElement("script");
+          s.src = src;
+          s.async = true;
+          s.onload = function () { resolve(src); };
+          s.onerror = function () { reject(new Error("Failed to load " + src)); };
+          document.head.appendChild(s);
+        });
+      }
+
+      // The UMD bundle exposes `window.AgentSDK` as a NAMESPACE object, with the
+      // client constructor at `window.AgentSDK.AgentSDK` (not window.AgentSDK
+      // itself). Resolve whichever shape is present.
+      function resolveSDKClass() {
+        const ns = window.AgentSDK;
+        if (typeof ns === "function") return ns;
+        if (ns && typeof ns.AgentSDK === "function") return ns.AgentSDK;
+        if (ns && typeof ns.default === "function") return ns.default;
+        if (ns && typeof ns.ChatClient === "function") return ns.ChatClient;
+        return null;
+      }
+
+      async function loadSdk() {
+        for (const src of SDK_SOURCES) {
+          try {
+            await loadScript(src);
+            if (resolveSDKClass()) return "class";
+            if (window.customElements && customElements.get("agent-widget"))
+              return "webcomponent";
+          } catch (err) {
+            console.warn("[ASAN-SDK]", err.message);
+          }
+        }
+        return null;
+      }
+
+      function handleRuntimeError(err) {
+        console.warn("[ASAN-SDK] send failed:", err && err.message);
+        showTyping(false);
+        renderAssistant({
+          role: "assistant",
+          content:
+            "**I could not reach the ASAN service just now.** Please retry in a moment — your session is unchanged.",
+        });
+      }
+
+      function wireChat(chat) {
+        activeChat = chat;
+        chat.on("message", function (m) {
+          showTyping(false);
+          if (m && m.id) clearStreamNode(m.id);
+          if (m && m.role === "user") return; // already echoed locally
+          renderAssistant(m);
+        });
+        chat.on("messageChunk", function (p) {
+          if (p && p.messageId != null) appendStream(p.messageId, p.chunk || "");
+        });
+        chat.on("typing", function (p) {
+          showTyping(p && p.isTyping);
+        });
+        if (typeof chat.on === "function") chat.on("error", handleRuntimeError);
+      }
+
+      function send(text, chat) {
+        const value = String(text || "").trim();
+        if (!value) return;
+        renderUser(value);
+        const c = chat || activeChat;
+        if (connected && c && typeof c.send === "function") {
+          showTyping(true);
+          try {
+            Promise.resolve(c.send(value)).catch(handleRuntimeError);
+          } catch (err) {
+            handleRuntimeError(err);
+          }
+        } else {
+          setTimeout(function () {
+            showTyping(false);
+            renderSampleCard();
+          }, 500);
+        }
+      }
+
+      function renderStarters() {
+        STARTERS.forEach(function (s) {
+          const chip = el("button", "quick-reply", esc(s));
+          chip.type = "button";
+          chip.addEventListener("click", function () {
+            els.input.value = "";
+            send(s, activeChat);
+          });
+          els.starters.appendChild(chip);
+        });
+      }
+
+      async function init() {
+        renderStarters();
+
+        if (!PUBLIC_KEY || /REPLACE/i.test(PUBLIC_KEY)) {
+          setBanner(
+            "notconnected",
+            "Not yet connected — paste your Web SDK key into <code>PUBLIC_KEY</code> (Studio → Deployments → Channels → Web SDK).",
+          );
+          renderSampleCard();
+          return;
+        }
+
+        let mode = null;
+        try {
+          mode = await loadSdk();
+        } catch (err) {
+          mode = null;
+        }
+
+        if (mode !== "class") {
+          setBanner(
+            "offline",
+            "Could not load the Web SDK bundle from <code>" +
+              esc(ENDPOINT) +
+              "</code>. Showing the sample UI.",
+          );
+          renderSampleCard();
+          return;
+        }
+
+        try {
+          const SDKClass = resolveSDKClass();
+          const sdk = new SDKClass({
+            projectId: PROJECT_ID,
+            apiKey: PUBLIC_KEY,
+            endpoint: ENDPOINT,
+            channelId: CHANNEL_ID,
+          });
+          await sdk.connect();
+          const chat = typeof sdk.chat === "function" ? sdk.chat() : sdk;
+          wireChat(chat);
+          setConnected();
+        } catch (err) {
+          console.warn("[ASAN-SDK] connect failed:", err && err.message);
+          setBanner(
+            "offline",
+            "Could not reach the endpoint (" +
+              esc(ENDPOINT) +
+              "). Showing the sample UI so the styling still demos.",
+          );
+          renderSampleCard();
+        }
+      }
+
+      els.send.addEventListener("click", function () {
+        const v = els.input.value.trim();
+        if (!v) return;
+        els.input.value = "";
+        send(v, activeChat);
+      });
+      els.input.addEventListener("keydown", function (e) {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          els.send.click();
+        }
+      });
+
+      try {
+        init();
+      } catch (err) {
+        console.warn("[ASAN-SDK] init error:", err && err.message);
+        setBanner("offline", "Start-up error. Showing the sample UI.");
+        renderSampleCard();
+      }
+    </script>
+  </body>
+</html>
