@@ -264,6 +264,37 @@
       .row--me .bubble code { background: rgba(255, 255, 255, 0.22); }
 
       /* rich card: GitHub-style tables from the agent's Markdown */
+      /* record cards for grouped list output */
+      .recs { display: flex; flex-direction: column; gap: 8px; margin: 8px 0 4px; }
+      .rec {
+        border: 1px solid var(--edge);
+        border-left: 3px solid var(--blue);
+        border-radius: 10px;
+        background: var(--card);
+        padding: 9px 12px;
+      }
+      .rec__head { font-size: 14px; margin-bottom: 4px; }
+      .rec__row { display: flex; gap: 10px; font-size: 13px; padding: 1px 0; }
+      .rec__k { flex: 0 0 40%; color: var(--muted); }
+      .rec__v { flex: 1; }
+      .rec__note { font-size: 13px; color: var(--muted); }
+      /* status pills */
+      .st {
+        display: inline-block;
+        padding: 1px 8px;
+        border-radius: 999px;
+        font-size: 12px;
+        font-weight: 600;
+        line-height: 1.5;
+        white-space: nowrap;
+      }
+      .st--ok { background: #e6f4ea; color: #1e6b32; }
+      .st--warn { background: #fff4e0; color: #8a5a00; }
+      .st--bad { background: #fdeaea; color: #a11414; }
+      .st--neutral { background: var(--chip); color: var(--ink); }
+      html[data-theme="dark"] .st--ok { background: #12331d; color: #7fd39a; }
+      html[data-theme="dark"] .st--warn { background: #3a2c10; color: #e8bd6a; }
+      html[data-theme="dark"] .st--bad { background: #3a1717; color: #f09a9a; }
       .bubble ul, .bubble ol { margin: 4px 0 8px; padding-left: 20px; }
       .bubble li { margin: 2px 0; }
       .kvrow {
@@ -650,6 +681,40 @@
         });
       }
       // Non-committal values the agent uses deliberately — render them muted.
+      // Known lifecycle states, rendered as coloured pills so a status list is
+      // scannable instead of a wall of bold text.
+      const STATUS_CLASS = {
+        "under review": "warn", "in progress": "warn", "pending payment": "warn",
+        "pending documents": "warn", "awaiting approval": "warn",
+        "issued": "ok", "completed": "ok", "approved": "ok", "paid": "ok", "active": "ok",
+        "rejected": "bad", "cancelled": "bad", "failed": "bad", "not active": "bad",
+      };
+      const STATUS_RE = new RegExp(
+        "(" + Object.keys(STATUS_CLASS).join("|").replace(/ /g, "\\s") + ")",
+        "gi",
+      );
+      // Applied to already-rendered HTML. A <strong> that wholly wraps a status
+      // becomes the pill itself, so we do not end up with bold text inside a pill.
+      // Two passes, both writing sentinels, so an already-built pill is never
+      // re-matched and wrapped a second time.
+      function pillify(html) {
+        const made = [];
+        const stash = function (w) {
+          made.push(pill(w));
+          return "@@P" + (made.length - 1) + "@@";
+        };
+        let out = String(html).replace(
+          new RegExp("<strong>\\s*" + STATUS_RE.source + "\\s*</strong>", "gi"),
+          function (_, w) { return stash(w); },
+        );
+        out = out.replace(STATUS_RE, function (w) { return stash(w); });
+        return out.replace(/@@P(\d+)@@/g, function (_, i) { return made[i]; });
+      }
+      function pill(word) {
+        const k = String(word).toLowerCase().replace(/\s+/g, " ").trim();
+        return '<span class="st st--' + (STATUS_CLASS[k] || "neutral") + '">' + word + "</span>";
+      }
+
       const MUTE_RE =
         /\b(unavailable|not assessed|no data|n\/a|unknown|restricted|pending)\b/i;
       // Manat / numeric cells get right-aligned tabular treatment.
@@ -707,14 +772,57 @@
             i++;
             continue;
           }
-          // Bulleted list: "- item" / "* item"
+          // Bulleted list. Detail lines that follow a bullet ("Next milestone: …",
+          // "Expected by: …") belong to that bullet: previously they escaped the
+          // list and rendered as full-width paragraphs, fragmenting each record.
           if (/^\s*[-*]\s+\S/.test(line)) {
-            let li = "";
+            const items = [];
             while (i < lines.length && /^\s*[-*]\s+\S/.test(lines[i])) {
-              li += "<li>" + inlineMd(esc(lines[i].replace(/^\s*[-*]\s+/, ""))) + "</li>";
+              const head = lines[i].replace(/^\s*[-*]\s+/, "");
               i++;
+              const subs = [];
+              while (
+                i < lines.length &&
+                lines[i].trim() !== "" &&
+                !/^\s*[-*]\s+\S/.test(lines[i]) &&
+                !/^\s*\d+[.)]\s+\S/.test(lines[i]) &&
+                !/^\s*#{1,6}\s+/.test(lines[i]) &&
+                !/^\s*\|.*\|\s*$/.test(lines[i])
+              ) {
+                subs.push(lines[i].trim());
+                i++;
+              }
+              items.push({ head: head, subs: subs });
             }
-            out += "<ul>" + li + "</ul>";
+            const grouped = items.some(function (it) { return it.subs.length; });
+            if (!grouped) {
+              let li = "";
+              items.forEach(function (it) {
+                li += "<li>" + pillify(inlineMd(esc(it.head))) + "</li>";
+              });
+              out += "<ul>" + li + "</ul>";
+              continue;
+            }
+            // Record cards: one per bullet, detail lines as aligned key/value rows.
+            let recs = "";
+            items.forEach(function (it) {
+              let meta = "";
+              it.subs.forEach(function (sub) {
+                const m = sub.match(/^\*{0,2}([^:*]{2,40}?)\*{0,2}:\s*(.+)$/);
+                if (m) {
+                  meta +=
+                    '<div class="rec__row"><span class="rec__k">' + inlineMd(esc(m[1])) +
+                    '</span><span class="rec__v">' + pillify(inlineMd(esc(m[2]))) + "</span></div>";
+                } else {
+                  meta += '<div class="rec__note">' + pillify(inlineMd(esc(sub))) + "</div>";
+                }
+              });
+              recs +=
+                '<div class="rec"><div class="rec__head">' +
+                pillify(inlineMd(esc(it.head))) +
+                "</div>" + meta + "</div>";
+            });
+            out += '<div class="recs">' + recs + "</div>";
             continue;
           }
           // Numbered list: "1. item"
@@ -735,12 +843,12 @@
               '<div class="kvrow"><span class="kvrow__k">' +
               inlineMd(esc(kv[1])) +
               '</span><span class="kvrow__v">' +
-              inlineMd(esc(kv[2])) +
+              pillify(inlineMd(esc(kv[2]))) +
               "</span></div>";
             i++;
             continue;
           }
-          out += "<p>" + inlineMd(esc(line)) + "</p>";
+          out += "<p>" + pillify(inlineMd(esc(line))) + "</p>";
           i++;
         }
         return out;
