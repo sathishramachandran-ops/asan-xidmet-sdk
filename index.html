@@ -837,9 +837,22 @@
         if (typeof chat.on === "function") chat.on("error", handleRuntimeError);
       }
 
+      // Starter chips are a first-turn affordance only: once the citizen has
+      // said anything they are stale (and re-tapping one derails the flow),
+      // so retire them on the first send.
+      function retireStarters() {
+        if (els.starters && els.starters.childNodes.length) {
+          els.starters.innerHTML = "";
+          els.starters.style.display = "none";
+        }
+        if (document.activeElement && document.activeElement.blur)
+          document.activeElement.blur();
+      }
+
       function send(text, chat) {
         const value = String(text || "").trim();
         if (!value) return;
+        retireStarters();
         renderUser(value);
         const c = chat || activeChat;
         if (connected && c && typeof c.send === "function") {
