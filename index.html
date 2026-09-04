@@ -264,6 +264,41 @@
       .row--me .bubble code { background: rgba(255, 255, 255, 0.22); }
 
       /* rich card: GitHub-style tables from the agent's Markdown */
+      /* selectable option cards */
+      .opts {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+        gap: 8px;
+        margin: 10px 0 4px;
+      }
+      .opt {
+        text-align: left;
+        font: inherit;
+        color: var(--ink);
+        background: var(--card);
+        border: 1px solid var(--edge);
+        border-radius: 12px;
+        padding: 10px 12px;
+        cursor: pointer;
+        display: flex;
+        flex-direction: column;
+        gap: 3px;
+        transition: border-color .12s, box-shadow .12s, transform .12s;
+      }
+      .opt:hover:not(:disabled) {
+        border-color: var(--blue);
+        box-shadow: 0 2px 10px rgba(15, 126, 245, 0.14);
+        transform: translateY(-1px);
+      }
+      .opt:disabled { cursor: default; }
+      .opt--picked { border-color: var(--blue); background: var(--chip); }
+      .opt--dim { opacity: 0.45; }
+      .opt__title { font-weight: 600; font-size: 13.5px; line-height: 1.35; }
+      .opt__meta { color: var(--muted); font-size: 12.5px; }
+      .opt__row { display: flex; gap: 8px; font-size: 12.5px; margin-top: 2px; }
+      .opt__k { color: var(--muted); }
+      .opt__v { font-weight: 600; }
+      .li__sub { color: var(--muted); font-size: 13px; }
       /* record cards for grouped list output */
       .recs { display: flex; flex-direction: column; gap: 8px; margin: 8px 0 4px; }
       .rec {
@@ -662,6 +697,21 @@
       // Masked identifiers the agent emits (s***@kore.com) collide with
       // Markdown emphasis and used to render as "s" + a literal "*@kore.com**".
       // Protect them before any asterisk parsing, then restore.
+      // esc() covers text nodes; attributes also need quote escaping.
+      function escAttr(s) {
+        return esc(s).replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+      }
+      // The clickable label for an option: the first bold run if the agent used
+      // one ("**ASAN xidmet merkezi No3 (Yasamal)** - Yasamal, **0.7 km**"),
+      // otherwise the head text up to the first separator.
+      function optionParts(head) {
+        const b = head.match(/\*\*([^*]+)\*\*/);
+        const title = b ? b[1].trim() : head.split(/\s+[-\u2014:]\s+/)[0].trim();
+        let rest = b ? head.slice(head.indexOf(b[0]) + b[0].length) : head.slice(title.length);
+        rest = rest.replace(/^\s*[-\u2014:,]\s*/, "").trim();
+        return { title: title, meta: rest };
+      }
+
       function inlineMd(s) {
         const guards = [];
         s = String(s).replace(
@@ -754,6 +804,11 @@
 
       function mdToHtml(text) {
         const lines = String(text == null ? "" : text).split("\n");
+        // A numbered list in a message that asks the citizen to pick is a set of
+        // choices, so render it as selectable cards rather than prose.
+        const isChoice = /\b(which|choose|select|pick|prefer|would you like)\b/i.test(
+          String(text == null ? "" : text),
+        );
         let out = "";
         let i = 0;
         while (i < lines.length) {
@@ -825,13 +880,61 @@
             out += '<div class="recs">' + recs + "</div>";
             continue;
           }
-          // Numbered list: "1. item"
+          // Numbered list. Detail lines ("Earliest slot: ...") belong to the item
+          // above them; previously every item closed the <ol> and the next one
+          // reopened it, which is why each entry restarted at "1.".
           if (/^\s*\d+[.)]\s+\S/.test(line)) {
-            let li = "";
+            const items = [];
             while (i < lines.length && /^\s*\d+[.)]\s+\S/.test(lines[i])) {
-              li += "<li>" + inlineMd(esc(lines[i].replace(/^\s*\d+[.)]\s+/, ""))) + "</li>";
+              const head = lines[i].replace(/^\s*\d+[.)]\s+/, "");
               i++;
+              const subs = [];
+              while (
+                i < lines.length &&
+                lines[i].trim() !== "" &&
+                !/^\s*\d+[.)]\s+\S/.test(lines[i]) &&
+                !/^\s*[-*]\s+\S/.test(lines[i]) &&
+                !/^\s*#{1,6}\s+/.test(lines[i]) &&
+                !/^\s*\|.*\|\s*$/.test(lines[i])
+              ) {
+                subs.push(lines[i].trim());
+                i++;
+              }
+              items.push({ head: head, subs: subs });
             }
+
+            if (isChoice) {
+              let cards = "";
+              items.forEach(function (it) {
+                const parts = optionParts(it.head);
+                let meta = "";
+                if (parts.meta) {
+                  meta += '<span class="opt__meta">' + inlineMd(esc(parts.meta)) + "</span>";
+                }
+                it.subs.forEach(function (sub) {
+                  const m = sub.match(/^\*{0,2}([^:*]{2,40}?)\*{0,2}:\s*(.+)$/);
+                  meta += m
+                    ? '<span class="opt__row"><span class="opt__k">' + inlineMd(esc(m[1])) +
+                      '</span><span class="opt__v">' + pillify(inlineMd(esc(m[2]))) + "</span></span>"
+                    : '<span class="opt__meta">' + pillify(inlineMd(esc(sub))) + "</span>";
+                });
+                cards +=
+                  '<button type="button" class="opt" data-choice="' + escAttr(parts.title) + '">' +
+                  '<span class="opt__title">' + inlineMd(esc(parts.title)) + "</span>" +
+                  meta + "</button>";
+              });
+              out += '<div class="opts">' + cards + "</div>";
+              continue;
+            }
+
+            let li = "";
+            items.forEach(function (it) {
+              let sub = "";
+              it.subs.forEach(function (x) {
+                sub += '<div class="li__sub">' + pillify(inlineMd(esc(x))) + "</div>";
+              });
+              li += "<li>" + pillify(inlineMd(esc(it.head))) + sub + "</li>";
+            });
             out += "<ol>" + li + "</ol>";
             continue;
           }
@@ -1032,6 +1135,21 @@
           }, 500);
         }
       }
+
+      // Option cards are rendered by the Markdown layer, so wire them with one
+      // delegated listener. Picking an option locks that group so the citizen
+      // cannot submit two choices for the same question.
+      els.stream.addEventListener("click", function (ev) {
+        const btn = ev.target.closest ? ev.target.closest(".opt") : null;
+        if (!btn || btn.disabled) return;
+        const group = btn.parentNode;
+        Array.prototype.forEach.call(group.querySelectorAll(".opt"), function (b) {
+          b.disabled = true;
+          if (b !== btn) b.classList.add("opt--dim");
+        });
+        btn.classList.add("opt--picked");
+        send(btn.getAttribute("data-choice"), activeChat);
+      });
 
       function renderStarters() {
         STARTERS.forEach(function (s) {
